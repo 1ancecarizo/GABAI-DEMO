@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>GABAI - Flood Monitoring System</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        
+        body {
+            overflow: hidden;
+        }
+        
+        .barangay-label { 
+            background: rgba(0,0,0,0.8); 
+            color: #fff; 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            font-weight: 600; 
+            font-size: 12px;
+        }
+
+        /* CHATBOT DESIGN */
+        :root{ 
+            --chat-bg: linear-gradient(135deg, #ffffff 0%, #f8faff 100%);
+            --chat-accent: #1976d2;
+            --chat-accent-light: #4dabf5;
+            --chat-accent-glow: rgba(25,118,210,0.2);
+            --chat-muted: #f5f7fb;
+            --chat-text: #1a2c3e;
+            --chat-user: linear-gradient(135deg, #1976d2, #4dabf5);
+            --chat-border: rgba(25,118,210,0.15);
+        }
+        
+        #chatWidget { 
+            position: fixed; 
+            right: 20px; 
+            bottom: 20px; 
+            z-index: 2000; 
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+        }
+        
+        #chatToggle { 
+            background: linear-gradient(135deg, #1976d2, #4dabf5); 
+            color: #fff; 
+            border: none; 
+            border-radius: 50%; 
+            width: 64px; 
+            height: 64px; 
+            cursor: pointer; 
+            box-shadow: 0 8px 24px rgba(25,118,210,0.4), 0 0 0 0 rgba(25,118,210,0.5);
+            font-size: 26px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            position: relative; 
+            transition: all 0.3s ease;
+            animation: pulse-ring 2s infinite;
+        }
+        
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 8px 24px rgba(25,118,210,0.4), 0 0 0 0 rgba(25,118,210,0.5); }
+            70% { box-shadow: 0 8px 24px rgba(25,118,210,0.4), 0 0 0 12px rgba(25,118,210,0); }
+            100% { box-shadow: 0 8px 24px rgba(25,118,210,0.4), 0 0 0 0 rgba(25,118,210,0); }
+        }
+        
+        #chatToggle:hover { transform: scale(1.08) translateY(-3px); box-shadow: 0 16px 32px rgba(25,118,210,0.5); }
+        
+        #chatToggle .chat-badge { 
+            position: absolute; top: -4px; right: -4px; background: linear-gradient(135deg, #ff3b30, #ff6b5e); color: #fff; font-size: 11px; font-weight: 700;
+            min-width: 20px; height: 20px; padding: 0 6px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: bounce 0.5s ease;
+        }
+        
+        @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+        
+        #chatPanel { 
+            display: none; width: 380px; max-width: 92vw; height: 560px; background: var(--chat-bg); border-radius: 24px; 
+            overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35), 0 0 0 1px rgba(25,118,210,0.1); 
+            margin-bottom: 12px; flex-direction: column; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        #chatPanel.open { display: flex; animation: slideUpChat 0.35s ease-out; }
+        @keyframes slideUpChat { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        
+        #chatHeader { background: linear-gradient(135deg, #1976d2, #0b5cab); color: #fff; padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; position: relative; }
+        #chatHeader::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="15" fill="rgba(255,255,255,0.05)"/><circle cx="85" cy="15" r="25" fill="rgba(255,255,255,0.03)"/><circle cx="50" cy="80" r="30" fill="rgba(255,255,255,0.02)"/></svg>'); background-size: cover; opacity: 0.3; pointer-events: none; }
+        #chatHeader .title { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; }
+        #chatHeader .status { font-size: 10px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 20px; font-weight: 500; margin-left: 8px; backdrop-filter: blur(4px); }
+        #chatHeader .controls { display: flex; gap: 10px; align-items: center; }
+        #chatHeader .controls .ctrl { background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 14px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; }
+        #chatHeader .controls .ctrl:hover { background: rgba(255,255,255,0.3); transform: scale(1.05); }
+        
+        #chatMessages { padding: 20px; overflow-y: auto; flex: 1; background: #f8fafd; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+        #chatMessages::-webkit-scrollbar { width: 5px; }
+        #chatMessages::-webkit-scrollbar-track { background: #e9ecef; border-radius: 10px; }
+        #chatMessages::-webkit-scrollbar-thumb { background: #1976d2; border-radius: 10px; }
+        
+        .msg { display: inline-flex; flex-direction: column; padding: 12px 16px; border-radius: 20px; max-width: 85%; font-size: 13px; line-height: 1.45; animation: fadeInMsg 0.3s ease-out; position: relative; }
+        @keyframes fadeInMsg { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .msg.user { align-self: flex-end; background: linear-gradient(135deg, #1976d2, #4dabf5); color: #fff; border-bottom-right-radius: 6px; box-shadow: 0 2px 8px rgba(25,118,210,0.25); }
+        .msg.bot { align-self: flex-start; background: #ffffff; color: #1a2c3e; border-bottom-left-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid rgba(25,118,210,0.1); }
+        .msg .text { word-wrap: break-word; white-space: pre-wrap; }
+        .msg .ts { font-size: 10px; opacity: 0.6; margin-top: 6px; letter-spacing: 0.2px; }
+        .msg.user .ts { color: rgba(255,255,255,0.7); }
+        .msg.bot .ts { color: #8a9bb0; }
+        
+        .typing-indicator { display: inline-flex; align-items: center; gap: 6px; background: #ffffff; padding: 12px 18px; border-radius: 20px; border-bottom-left-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .typing-dot { width: 8px; height: 8px; background: #1976d2; border-radius: 50%; animation: typingBounce 1.4s infinite ease-in-out; }
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-8px); opacity: 1; } }
+        
+        #chatInputWrap { display: flex; padding: 16px 20px; background: #ffffff; border-top: 1px solid rgba(25,118,210,0.08); gap: 12px; }
+        #chatInput { flex: 1; padding: 12px 18px; border-radius: 30px; border: 1px solid #e2e8f0; font-size: 14px; font-family: inherit; transition: all 0.2s ease; background: #f8fafd; }
+        #chatInput:focus { outline: none; border-color: #1976d2; box-shadow: 0 0 0 3px rgba(25,118,210,0.1); background: #ffffff; }
+        #chatSend { background: linear-gradient(135deg, #1976d2, #4dabf5); color: #fff; border: none; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; font-weight: 600; font-size: 18px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; }
+        #chatSend:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(25,118,210,0.4); }
+
+        /* Flood Circle Animations - Different pulse for RED danger zones */
+        @keyframes floodPulseRed { 
+            0%, 100% { opacity: 0.8; filter: drop-shadow(0 0 12px rgba(229,57,53,0.7)); }
+            50% { opacity: 1; filter: drop-shadow(0 0 30px rgba(229,57,53,1)); }
+        }
+        @keyframes floodPulseBlue { 
+            0%, 100% { opacity: 0.8; filter: drop-shadow(0 0 12px rgba(25,118,210,0.7)); }
+            50% { opacity: 1; filter: drop-shadow(0 0 30px rgba(25,118,210,1)); }
+        }
+        .flood-major-circle { animation: floodPulseRed 0.6s ease-in-out infinite !important; }
+        .flood-moderate-circle { animation: floodPulseBlue 3s ease-in-out infinite !important; }
+        .flood-minor-circle { animation: floodPulseBlue 4s ease-in-out infinite !important; }
+
+        /* FULLSCREEN MAP */
+        .flood-dashboard { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        .flood-row { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
+        .flood-main { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
+        .flood-main-map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
+        #leafletMap { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; border: none !important; outline: none !important; }
+        .leaflet-container { margin: 0 !important; padding: 0 !important; border: none !important; background: #000; }
+        
+        /* LEGEND STYLES - RED for DANGER */
+        .flood-legend-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+        .flood-dot-major { background-color: #e53935 !important; box-shadow: 0 0 6px rgba(229,57,53,0.5); }
+        .flood-dot-moderate { background-color: #42a5f5 !important; }
+        .flood-dot-minor { background-color: #90caf9 !important; }
+        
+        /* Flood Legend Panel */
+        .flood-legend-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(10, 20, 30, 0.92);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(77, 171, 245, 0.4);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-family: system-ui, sans-serif;
+            min-width: 180px;
+        }
+        
+        .flood-legend-panel .legend-title {
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 6px;
+        }
+        
+        .flood-legend-panel .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #e2e8f0;
+        }
+        
+        .flood-legend-panel .legend-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .flood-legend-panel .legend-text {
+            flex: 1;
+        }
+        
+        .flood-legend-panel .warning-badge {
+            background: rgba(229,57,53,0.3);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #ff8a80;
+            margin-left: 8px;
+        }
+        
+        .close-btn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.2); border: none; color: #fff; font-size: 16px; cursor: pointer; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+        .close-btn:hover { background: rgba(255,255,255,0.4); }
+        
+        .prediction-bar { background: rgba(255,152,0,0.3); border-left: 3px solid rgba(255,152,0,0.3); border-radius: 6px; }
+        
+        /* Flood Detail Panel */
+        #floodDetailPanel {
+            position: fixed;
+            bottom: 150px;
+            right: 18px;
+            z-index: 1000;
+            width: 320px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            border-radius: 12px;
+            background: rgba(10, 20, 30, 0.95);
+            border: 1px solid rgba(77, 171, 245, 0.5);
+            backdrop-filter: blur(4px);
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <main class="flood-dashboard">
+        <div class="flood-row">
+            <section class="flood-main">
+                <div class="flood-main-map">
+                    <div id="leafletMap"></div>
+                </div>
+            </section>
+        </div>
+       
+     
+       
+        <!-- Flood Info Panel -->
+        <aside id="floodDetailPanel">
+            <button class="close-btn" onclick="closeFloodPanel()">×</button>
+            <div style="padding: 20px;">
+                <div id="panelBarangayName" style="color: #4dabf5; font-size: 14px; font-weight: 700; margin-bottom: 8px;">Select a Flood Zone</div>
+                
+                <!-- Water Level Meter -->
+                <div style="margin: 12px 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: #fff; font-size: 12px;">Current Water Level</span>
+                        <span id="panelCurrentLevel" style="color: #ff9800; font-size: 18px; font-weight: 700;">0.0 ft</span>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.5); border-radius: 8px; height: 80px; position: relative; overflow: hidden; border: 1px solid #1976d2;">
+                        <div id="waterFillBar" style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(180deg, #42a5f5, #1565c0); transition: height 0.5s ease-out; border-radius: 0 0 8px 8px; height: 0%;"></div>
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; padding: 8px; pointer-events: none;">
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.3); margin: 12px 0;"></div>
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.3); margin: 12px 0;"></div>
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.3); margin: 12px 0;"></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                        <span style="color: #888; font-size: 10px;">0 ft</span>
+                        <span style="color: #888; font-size: 10px;">2 ft</span>
+                        <span style="color: #888; font-size: 10px;">4 ft</span>
+                        <span style="color: #888; font-size: 10px;">6 ft</span>
+                    </div>
+                </div>
+                
+                <!-- Rising Trend Indicator -->
+                <div style="background: rgba(0,0,0,0.4); border-radius: 8px; padding: 10px; margin: 12px 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #ff9800; font-size: 14px;">Rising Trend</span>
+                        <span id="risingRate" style="color: #fff; font-size: 12px;">-- ft/hr</span>
+                    </div>
+                    <div style="color: #ccc; font-size: 11px;">Select a flood zone to see rising rate</div>
+                </div>
+                
+                <!-- Short-term Predictions -->
+                <div style="margin-top: 16px;">
+                    <div style="color: #4dabf5; font-size: 12px; font-weight: 600; margin-bottom: 10px;">Flood Predictions</div>
+                    <div id="predictionsList" style="display: flex; flex-direction: column; gap: 8px;">
+                        <div class="prediction-bar" style="padding: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #fff; font-size: 12px;">In 10 minutes</span>
+                                <span id="pred10min" style="color: #ff9800; font-weight: 700;">-- ft</span>
+                            </div>
+                        </div>
+                        <div class="prediction-bar" style="padding: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #fff; font-size: 12px;">In 25 minutes</span>
+                                <span id="pred25min" style="color: #ff9800; font-weight: 700;">-- ft</span>
+                            </div>
+                        </div>
+                        <div class="prediction-bar" style="padding: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #fff; font-size: 12px;">In 1 hour</span>
+                                <span id="pred1h" style="color: #ff9800; font-weight: 700;">-- ft</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Safety Advisory -->
+                <div id="safetyAdvisory" style="margin-top: 16px; padding: 10px; border-radius: 8px; background: rgba(100,100,100,0.2); border-left: 3px solid #888;">
+                    <div style="color: #ccc; font-size: 11px;">Click on any flood zone to view detailed flood data</div>
+                </div>
+                
+                <div style="color: #ccc; font-size: 10px; margin-top: 12px; text-align: center;">
+                    Last update: <span id="panelUpdateTime">--:--</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Chatbot Widget -->
+        <div id="chatWidget">
+            <button id="chatToggle" aria-label="Open chat assistant">
+                <span>💬</span>
+                <span class="chat-badge" style="display:none;">0</span>
+            </button>
+            <div id="chatPanel" aria-hidden="true">
+                <div id="chatHeader">
+                    <div class="title">GABAI</div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <div class="status">Online</div>
+                        <div class="controls">
+                            <button id="chatClear" class="ctrl">🗑</button>
+                            <button id="chatClose" class="ctrl">✕</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="chatMessages"></div>
+                <div id="chatInputWrap">
+                    <input id="chatInput" type="text" placeholder="Ask about flood levels..." autocomplete="off"/>
+                    <button id="chatSend">➤</button>
+                </div>
+            </div>
+        </div> 
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.min.js"></script>
+        
+    <script>
+    // Map initialization
+    var map = L.map('leafletMap', { zoomControl: true }).setView([13.1391, 123.7438], 13);
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri',
+        maxZoom: 16
+    }).addTo(map);
+
+    L.control.scale({position:'bottomleft', metric:true}).addTo(map);
+    
+    window.addEventListener('resize', () => setTimeout(() => map.invalidateSize(), 100));
+    setTimeout(() => map.invalidateSize(), 200);
+
+    var selectedNode = null;
+    var currentPanel = document.getElementById('floodDetailPanel');
+    var floodHistory = new Map();
+    
+    var nodes = [
+        {lat:13.1391, lng:123.7438, flood_level:85, barangay:'Cabangan West'},
+        {lat:13.1420, lng:123.7480, flood_level:42, barangay:'Bitano'},
+        {lat:13.1365, lng:123.7380, flood_level:48, barangay:'Bogtong'},
+        {lat:13.1450, lng:123.7530, flood_level:38, barangay:'San Roque'},
+        {lat:13.1330, lng:123.7460, flood_level:8, barangay:'Bogtong East'},
+        {lat:13.1385, lng:123.7590, flood_level:18, barangay:'San Roque North'},
+        {lat:13.1405, lng:123.7550, flood_level:12, barangay:'Dita'},
+        {lat:13.1355, lng:123.7405, flood_level:15, barangay:'Bagumbayan'},
+        {lat:13.1375, lng:123.7470, flood_level:22, barangay:'Bogtong Central'},
+        {lat:13.1410, lng:123.7425, flood_level:28, barangay:'Dinagaan'},
+        {lat:13.1440, lng:123.7350, flood_level:10, barangay:'Victory Village'},
+        {lat:13.1305, lng:123.7500, flood_level:6, barangay:'Pawa'},
+        {lat:13.1320, lng:123.7380, flood_level:35, barangay:'Pawa West'},
+        {lat:13.1470, lng:123.7430, flood_level:68, barangay:'San Roque South'},
+        {lat:13.1485, lng:123.7485, flood_level:72, barangay:'San Roque East'},
+        {lat:13.1495, lng:123.7400, flood_level:14, barangay:'Pawa East'},
+        {lat:13.1465, lng:123.7355, flood_level:30, barangay:'Basud'},
+        {lat:13.1500, lng:123.7450, flood_level:25, barangay:'Bagumbayan North'}
+    ];
+
+    function levelToFeet(level) { return (level / 100 * 6).toFixed(1); }
+    
+    function calculateRisingRate(barangayName, currentLevel) {
+        if (!floodHistory.has(barangayName)) return 0.05;
+        var history = floodHistory.get(barangayName);
+        if (history.length < 2) return 0.08;
+        var recent = history.slice(-3);
+        if (recent.length < 2) return 0.08;
+        var totalChange = 0, totalTime = 0;
+        for (var i = 1; i < recent.length; i++) {
+            var timeDiff = (recent[i].timestamp - recent[i-1].timestamp) / (1000 * 60 * 60);
+            if (timeDiff > 0) {
+                var levelChange = (recent[i].level - recent[i-1].level) / 100 * 6;
+                totalChange += levelChange;
+                totalTime += timeDiff;
+            }
+        }
+        var rate = totalTime > 0 ? totalChange / totalTime : 0.05;
+        return Math.max(0.02, Math.min(0.5, rate));
+    }
+    
+    function getPredictions(barangayName, currentFeet, risingRate) {
+        var ratePerMinute = risingRate / 60;
+        return {
+            pred10min: Math.min(8, (parseFloat(currentFeet) + ratePerMinute * 10)).toFixed(1),
+            pred25min: Math.min(8, (parseFloat(currentFeet) + ratePerMinute * 25)).toFixed(1),
+            pred1h: Math.min(8, (parseFloat(currentFeet) + risingRate * 1)).toFixed(1)
+        };
+    }
+    
+    function updateHistory(barangayName, levelValue) {
+        if (!floodHistory.has(barangayName)) floodHistory.set(barangayName, []);
+        var history = floodHistory.get(barangayName);
+        history.push({ level: levelValue, timestamp: Date.now() });
+        if (history.length > 20) history.shift();
+        floodHistory.set(barangayName, history);
+    }
+    
+    function zoomToFloodZone(lat, lng) {
+        map.flyTo([lat, lng], 16, { duration: 0.8 });
+    }
+    
+    function updateFloodPanel(node) {
+        if (!node) return;
+        var currentFeet = parseFloat(levelToFeet(node.flood_level));
+        var risingRate = calculateRisingRate(node.barangay, node.flood_level);
+        var predictions = getPredictions(node.barangay, currentFeet, risingRate);
+        
+        document.getElementById('panelBarangayName').textContent = node.barangay;
+        document.getElementById('panelCurrentLevel').textContent = currentFeet.toFixed(1) + ' ft';
+        document.getElementById('risingRate').textContent = '+' + risingRate.toFixed(2) + ' ft/hr';
+        document.getElementById('pred10min').textContent = predictions.pred10min + ' ft';
+        document.getElementById('pred25min').textContent = predictions.pred25min + ' ft';
+        document.getElementById('pred1h').textContent = predictions.pred1h + ' ft';
+        
+        var fillPercent = Math.min(100, (currentFeet / 6) * 100);
+        document.getElementById('waterFillBar').style.height = fillPercent + '%';
+        
+        var advisory = document.getElementById('safetyAdvisory');
+        if (parseFloat(predictions.pred1h) > 3.5) {
+            advisory.style.background = 'rgba(229,57,53,0.3)';
+            advisory.style.borderLeftColor = '#e53935';
+            advisory.innerHTML = '<div style="color: #fff; font-size: 11px;">🔴 CRITICAL: Flood levels expected to exceed 3.5 ft within 1 hour. Prepare for evacuation immediately.</div>';
+        } else if (parseFloat(predictions.pred25min) > 2.5) {
+            advisory.style.background = 'rgba(255,152,0,0.25)';
+            advisory.style.borderLeftColor = '#ff9800';
+            advisory.innerHTML = '<div style="color: #fff; font-size: 11px;">⚠️ WARNING: Rapidly rising water levels. Expect 2.5+ ft in 25 minutes.</div>';
+        } else if (parseFloat(predictions.pred10min) > 1.5) {
+            advisory.style.background = 'rgba(33,150,243,0.2)';
+            advisory.style.borderLeftColor = '#2196f3';
+            advisory.innerHTML = '<div style="color: #fff; font-size: 11px;">📢 ADVISORY: Water levels rising quickly. Stay alert.</div>';
+        } else {
+            advisory.style.background = 'rgba(76,175,80,0.2)';
+            advisory.style.borderLeftColor = '#4caf50';
+            advisory.innerHTML = '<div style="color: #fff; font-size: 11px;">✅ Current levels are manageable. Monitor short-term predictions.</div>';
+        }
+        
+        document.getElementById('panelUpdateTime').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    }
+    
+    function closeFloodPanel() { 
+        document.getElementById('panelBarangayName').textContent = 'Select a Flood Zone';
+        document.getElementById('panelCurrentLevel').textContent = '0.0 ft';
+        document.getElementById('risingRate').textContent = '-- ft/hr';
+        document.getElementById('pred10min').textContent = '-- ft';
+        document.getElementById('pred25min').textContent = '-- ft';
+        document.getElementById('pred1h').textContent = '-- ft';
+        document.getElementById('waterFillBar').style.height = '0%';
+        document.getElementById('safetyAdvisory').style.background = 'rgba(100,100,100,0.2)';
+        document.getElementById('safetyAdvisory').style.borderLeftColor = '#888';
+        document.getElementById('safetyAdvisory').innerHTML = '<div style="color: #ccc; font-size: 11px;">Click on any flood zone to view detailed flood data</div>';
+        document.getElementById('panelUpdateTime').textContent = '--:--';
+        currentPanel.style.display = 'none';
+    }
+    
+    function getFloodingLevel(flood_level) {
+        if (flood_level >= 70) return 'Major Flooding';
+        if (flood_level >= 35) return 'Moderate';
+        return 'Minor Flooding';
+    }
+    
+    var markers = [];
+    nodes.forEach(function(n){
+        // RED for Major Flooding (≥70), BLUE for others
+        var color = (n.flood_level >= 70) ? '#e53935' : (n.flood_level >= 35 ? '#42a5f5' : '#90caf9');
+        var radius = Math.max(8, Math.sqrt(Math.max(n.flood_level, 1)) * 18);
+        var animClass = (n.flood_level >= 70) ? 'flood-major-circle' : (n.flood_level >= 35 ? 'flood-moderate-circle' : 'flood-minor-circle');
+        
+        var circle = L.circle([n.lat, n.lng], { radius: radius, color: color, fillColor: color, fillOpacity: 0.7, weight: 2, className: animClass }).addTo(map);
+        circle.bindPopup('<b>' + n.barangay + '</b><br>Flood: ' + getFloodingLevel(n.flood_level) + '<br>Height: ' + levelToFeet(n.flood_level) + ' ft');
+        circle.bindTooltip(n.barangay, {permanent: false, direction: 'top', className: 'barangay-label', offset: [0, -5]});
+        
+        circle.on('click', function(){
+            selectedNode = n;
+            updateHistory(n.barangay, n.flood_level);
+            updateFloodPanel(n);
+            zoomToFloodZone(n.lat, n.lng);
+            currentPanel.style.display = 'block';
+        });
+        n._circle = circle;
+        markers.push(circle);
+    });
+    
+    var userMarker = null, routeLayer = null;
+    function ensureUserLocation(cb){ if(userMarker) return cb(); var n = nodes[0]; userMarker = L.circleMarker([n.lat, n.lng], {radius:8, color:'#1976d2', fillColor:'#1976d2', fillOpacity:0.9}).addTo(map).bindPopup('Your Location'); cb(); }
+    function haversine(a,b){ var R=6371, toRad=Math.PI/180; var dLat=(b.lat - a.lat)*toRad, dLon=(b.lng - a.lng)*toRad; var lat1=a.lat*toRad, lat2=b.lat*toRad; var sin1=Math.sin(dLat/2), sin2=Math.sin(dLon/2); var c = sin1*sin1 + Math.cos(lat1)*Math.cos(lat2)*sin2*sin2; return R*2*Math.atan2(Math.sqrt(c), Math.sqrt(1-c)); }
+    
+    L.Control.ClearRoute = L.Control.extend({ onAdd: function(map){ var div = L.DomUtil.create('div','leaflet-bar'); var a = L.DomUtil.create('a','',div); a.innerHTML = '↺'; a.title = 'Clear route'; a.href = '#'; L.DomEvent.on(a,'click', function(e){ L.DomEvent.preventDefault(e); if(routeLayer) map.removeLayer(routeLayer); }); return div; } });
+    new L.Control.ClearRoute({position:'topright'}).addTo(map);
+    
+    // Simulate water rising over time with RED for danger zones
+    setInterval(function(){
+        nodes.forEach(function(n){
+            var delta = Math.floor((Math.random() * 5) - 1 + 0.3);
+            var newLevel = Math.max(1, Math.min(100, (n.flood_level || 1) + delta));
+            n.flood_level = newLevel;
+            var color = (newLevel >= 70) ? '#e53935' : (newLevel >= 35 ? '#42a5f5' : '#90caf9');
+            var radius = Math.max(8, Math.sqrt(Math.max(newLevel, 1)) * 18);
+            var animClass = (newLevel >= 70) ? 'flood-major-circle' : (newLevel >= 35 ? 'flood-moderate-circle' : 'flood-minor-circle');
+            if(n._circle){
+                n._circle.setStyle({ color: color, fillColor: color, fillOpacity: 0.7, weight: 2 });
+                n._circle.setRadius(radius);
+                var circleElement = n._circle._path;
+                if(circleElement){ circleElement.classList.remove('flood-major-circle', 'flood-moderate-circle', 'flood-minor-circle'); circleElement.classList.add(animClass); }
+                n._circle.bindPopup('<b>' + n.barangay + '</b><br>Flood: ' + getFloodingLevel(newLevel) + '<br>Height: ' + levelToFeet(newLevel) + ' ft');
+            }
+            if(selectedNode && selectedNode.barangay === n.barangay) { updateHistory(n.barangay, n.flood_level); updateFloodPanel(n); selectedNode = n; }
+        });
+    }, 8000);
+    
+    window.closeFloodPanel = closeFloodPanel;
+    
+    // Chat Functionality
+    (function(){
+        var toggle = document.getElementById('chatToggle');
+        var panel = document.getElementById('chatPanel');
+        var closeBtn = document.getElementById('chatClose');
+        var clearBtn = document.getElementById('chatClear');
+        var messages = document.getElementById('chatMessages');
+        var input = document.getElementById('chatInput');
+        var send = document.getElementById('chatSend');
+        var badge = document.querySelector('#chatToggle .chat-badge');
+        var unread = 0;
+        
+        function addTypingIndicator() {
+            var typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+            messages.appendChild(typingDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function removeTypingIndicator() {
+            var indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.remove();
+        }
+        
+        function addMessage(sender, text){
+            var d = document.createElement('div');
+            d.className = 'msg ' + sender;
+            var time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            d.innerHTML = '<div class="text">' + text.replace(/\n/g, '<br>') + '</div><span class="ts">' + time + '</span>';
+            messages.appendChild(d);
+            messages.scrollTop = messages.scrollHeight;
+            if(sender === 'bot' && (!panel.classList.contains('open') || panel.style.display !== 'flex')){ unread++; if(badge) { badge.style.display = 'inline-flex'; badge.textContent = unread; } }
+        }
+        
+        function openPanel(){ panel.style.display = 'flex'; panel.classList.add('open'); unread = 0; if(badge) badge.style.display = 'none'; input.focus(); }
+        function closePanel(){ panel.style.display = 'none'; panel.classList.remove('open'); }
+        
+        toggle.addEventListener('click', function(){ if(panel.style.display === 'flex') closePanel(); else openPanel(); });
+        closeBtn.addEventListener('click', closePanel);
+        clearBtn.addEventListener('click', function(){ while(messages.firstChild) messages.removeChild(messages.firstChild); addMessage('bot', 'Chat history cleared. How can I help you today?'); });
+        
+        function respond(text){
+            var t = text.toLowerCase();
+            if(/level|height|baha|flood/.test(t) && selectedNode){
+                var rate = calculateRisingRate(selectedNode.barangay, selectedNode.flood_level);
+                var preds = getPredictions(selectedNode.barangay, parseFloat(levelToFeet(selectedNode.flood_level)), rate);
+                var severity = selectedNode.flood_level >= 70 ? '🔴 DANGER - Major Flooding' : (selectedNode.flood_level >= 35 ? '🟡 Moderate' : '🟢 Minor');
+                addMessage('bot', 'Location: ' + selectedNode.barangay + '\nSeverity: ' + severity + '\nCurrent level: ' + levelToFeet(selectedNode.flood_level) + ' ft\nRising at: ' + rate.toFixed(2) + ' ft/hr\nPredictions:\n- 10 min: ' + preds.pred10min + ' ft\n- 25 min: ' + preds.pred25min + ' ft\n- 1 hour: ' + preds.pred1h + ' ft');
+            } else if(/predict|forecast/.test(t) && selectedNode){
+                var rate = calculateRisingRate(selectedNode.barangay, selectedNode.flood_level);
+                var current = parseFloat(levelToFeet(selectedNode.flood_level));
+                var preds = getPredictions(selectedNode.barangay, current, rate);
+                addMessage('bot', 'Flood Forecast for ' + selectedNode.barangay + '\n- In 10 minutes: ' + preds.pred10min + ' ft\n- In 25 minutes: ' + preds.pred25min + ' ft\n- In 1 hour: ' + preds.pred1h + ' ft');
+            } else if(/zoom/.test(t) && selectedNode){
+                addMessage('bot', 'Zooming to ' + selectedNode.barangay + '...');
+                map.flyTo([selectedNode.lat, selectedNode.lng], 16, { duration: 0.6 });
+            } else if(/legend|color|meaning/.test(t)){
+                addMessage('bot', '🔴 RED = Major Flooding (DANGER - Evacuate if advised)\n🔵 BLUE = Moderate Flooding (CAUTION)\n💙 LIGHT BLUE = Minor Flooding (ADVISORY)');
+            } else if(/help/.test(t)){
+                addMessage('bot', 'I can help you with:\n- Click any colored circle on the map\n- Ask "flood level" for current data\n- Ask "predict" for forecasts\n- Ask "legend" for color meanings\n- Ask "zoom" to focus on an area');
+            } else {
+                addMessage('bot', 'GABAI Flood Assistant\n\n🔴 RED zones = DANGER - Major Flooding\n🔵 BLUE zones = Moderate Flooding\n💙 LIGHT BLUE = Minor Flooding\n\nClick on any flood zone to see detailed water levels, rising trends, and predictions for 10min, 25min, 1hr.\n\nType "help" for more options.');
+            }
+        }
+        
+        send.addEventListener('click', function(){ var v = input.value.trim(); if(!v) return; input.value = ''; addMessage('user', v); addTypingIndicator(); setTimeout(function(){ removeTypingIndicator(); respond(v); }, 600); });
+        input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); send.click(); } });
+        addMessage('bot', 'Welcome to GABAI Flood Monitoring!\n\n🔴 RED circles = DANGER (Major Flooding)\n🔵 BLUE circles = Moderate Flooding  \n💙 LIGHT BLUE = Minor Flooding\n\nClick on any colored zone to see real-time water levels, rising trends, and predictions (10min, 25min, 1hr).\n\nType "help" to see what I can do.');
+    })();
+    </script>
+</body>
+</html>
